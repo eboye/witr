@@ -8,29 +8,54 @@ on:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Required to create releases
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for versioning
 
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.25'
+          go-version: '1.22'  # Fixed to valid version
 
       - name: Set version and commit
         id: vars
         run: |
-          echo "VERSION=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          echo "COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "DATE=$(date +%Y-%m-%d)" >> $GITHUB_ENV
+          # Get commit info
+          COMMIT=$(git rev-parse --short HEAD)
+          DATE=$(date +%Y-%m-%d)
+          
+          # Check if there's already a release for today
+          TODAY_RELEASE=$(gh release list --limit 1 --json tagName | jq -r '.[0].tagName // ""' 2>/dev/null || echo "")
+          
+          if [[ $TODAY_RELEASE == v0.1.0-* ]]; then
+            # Increment the patch version for today's releases
+            BASE_VERSION=$(echo $TODAY_RELEASE | cut -d'-' -f1)
+            PATCH_VERSION=$(echo $TODAY_RELEASE | cut -d'-' -f2 | sed 's/[^0-9]//g')
+            NEW_PATCH=$((PATCH_VERSION + 1))
+            VERSION="v0.1.0-${NEW_PATCH}"
+          else
+            # Start with patch 1 for today
+            VERSION="v0.1.0-1"
+          fi
+          
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "COMMIT=$COMMIT" >> $GITHUB_OUTPUT
+          echo "DATE=$DATE" >> $GITHUB_OUTPUT
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build linux/amd64
         run: |
-          GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=$VERSION -X main.commit=$COMMIT -X 'main.buildDate=$DATE'" -o witr-linux-amd64 ./cmd/witr
+          GOOS=linux GOARCH=amd64 go build -ldflags "-X main.version=${{ steps.vars.outputs.VERSION }} -X main.commit=${{ steps.vars.outputs.COMMIT }} -X 'main.buildDate=${{ steps.vars.outputs.DATE }}'" -o witr-linux-amd64 ./cmd/witr
 
       - name: Build linux/arm64
         run: |
-          GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=$VERSION -X main.commit=$COMMIT -X 'main.buildDate=$DATE'" -o witr-linux-arm64 ./cmd/witr
+          GOOS=linux GOARCH=arm64 go build -ldflags "-X main.version=${{ steps.vars.outputs.VERSION }} -X main.commit=${{ steps.vars.outputs.COMMIT }} -X 'main.buildDate=${{ steps.vars.outputs.DATE }}'" -o witr-linux-arm64 ./cmd/witr
 
       - name: Generate SHA256SUMS
         run: |
@@ -42,10 +67,50 @@ jobs:
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          name: "Release ${{ steps.vars.outputs.VERSION }}"
+          tag_name: "${{ steps.vars.outputs.VERSION }}"
+          body: |
+            Automated release from main branch
+            
+            ## Build Information
+            - Version: ${{ steps.vars.outputs.VERSION }}
+            - Commit: ${{ steps.vars.outputs.COMMIT }}
+            - Build Date: ${{ steps.vars.outputs.DATE }}
+            
+            ## Installation
+            
+            ### Quick Install (Recommended)
+            ```bash
+            curl -fsSL https://raw.githubusercontent.com/pranshuparmar/witr/main/install.sh | bash
+            ```
+            
+            ### Manual Download
+            ```bash
+            # For AMD64 (most PCs/servers)
+            wget https://github.com/pranshuparmar/witr/releases/download/${{ steps.vars.outputs.VERSION }}/witr-linux-amd64
+            chmod +x witr-linux-amd64
+            sudo mv witr-linux-amd64 /usr/local/bin/witr
+            
+            # For ARM64 (Raspberry Pi, ARM servers)
+            wget https://github.com/pranshuparmar/witr/releases/download/${{ steps.vars.outputs.VERSION }}/witr-linux-arm64
+            chmod +x witr-linux-arm64
+            sudo mv witr-linux-arm64 /usr/local/bin/witr
+            ```
+            
+            ### Verify Installation
+            ```bash
+            witr --version
+            ```
+            
+            ---
+            
+            This is an automated release from the latest main branch. For the latest source code, see the [main branch](https://github.com/pranshuparmar/witr/tree/main).
           files: |
             witr-linux-amd64
             witr-linux-arm64
             SHA256SUMS
             witr.1
+          draft: false
+          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
