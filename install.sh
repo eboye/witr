@@ -1,7 +1,6 @@
+#!/usr/bin/env bash
 # Installs the latest release of witr from GitHub
 # Repo: https://github.com/pranshuparmar/witr
-
-#!/usr/bin/env bash
 set -euo pipefail
 
 REPO="pranshuparmar/witr"

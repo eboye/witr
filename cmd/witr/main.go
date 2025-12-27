@@ -15,6 +15,36 @@ import (
 	"github.com/pranshuparmar/witr/pkg/model"
 )
 
+// Helper functions for environment variable redaction (moved from output package)
+var sensitivePatterns = []string{
+	"PASSWORD", "SECRET", "TOKEN", "KEY", "API_KEY", "PRIVATE_KEY",
+	"AWS_SECRET", "AWS_ACCESS", "DATABASE_URL", "DB_PASSWORD", "CREDENTIAL",
+	"AUTH", "PASSPHRASE", "CERTIFICATE", "SSL_CERT", "TLS_CERT",
+}
+
+func isSensitiveEnv(envVar string) bool {
+	parts := strings.SplitN(envVar, "=", 2)
+	if len(parts) < 1 {
+		return false
+	}
+	
+	varName := strings.ToUpper(parts[0])
+	for _, pattern := range sensitivePatterns {
+		if strings.Contains(varName, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func redactEnvVar(envVar string) string {
+	parts := strings.SplitN(envVar, "=", 2)
+	if len(parts) < 2 {
+		return envVar
+	}
+	return parts[0] + "=***REDACTED***"
+}
+
 var version = ""
 var commit = ""
 var buildDate = ""
@@ -79,6 +109,7 @@ func main() {
 	warnFlag := flag.Bool("warnings", false, "show only warnings")
 	noColorFlag := flag.Bool("no-color", false, "disable colorized output")
 	envFlag := flag.Bool("env", false, "show only environment variables for the process")
+	showSecretsFlag := flag.Bool("show-secrets", false, "show sensitive environment variables without redaction")
 	helpFlag := flag.Bool("help", false, "show help")
 
 	flag.Parse()
@@ -134,7 +165,20 @@ func main() {
 				Command string   `json:"Command"`
 				Env     []string `json:"Env"`
 			}
-			out := envOut{Command: procInfo.Cmdline, Env: procInfo.Env}
+			// Apply redaction to JSON output if needed
+			env := procInfo.Env
+			if !*showSecretsFlag {
+				filteredEnv := make([]string, 0, len(env))
+				for _, e := range env {
+					if isSensitiveEnv(e) {
+						filteredEnv = append(filteredEnv, redactEnvVar(e))
+					} else {
+						filteredEnv = append(filteredEnv, e)
+					}
+				}
+				env = filteredEnv
+			}
+			out := envOut{Command: procInfo.Cmdline, Env: env}
 			enc, _ := json.MarshalIndent(out, "", "  ")
 			fmt.Println(string(enc))
 		} else {
