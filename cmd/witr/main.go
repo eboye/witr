@@ -50,7 +50,7 @@ var commit = ""
 var buildDate = ""
 
 func printHelp() {
-	fmt.Println("Usage: witr [--pid N | --port N | name] [--short] [--tree] [--json] [--warnings] [--no-color] [--env] [--help] [--version]")
+	fmt.Println("Usage: witr [--pid N | --port N | name] [--short] [--tree] [--json] [--warnings] [--no-color] [--env] [--show-secrets] [--verbose] [--help] [--version]")
 	fmt.Println("  --pid <n>         Explain a specific PID")
 	fmt.Println("  --port <n>        Explain port usage")
 	fmt.Println("  --short           One-line summary")
@@ -59,6 +59,8 @@ func printHelp() {
 	fmt.Println("  --warnings        Show only warnings")
 	fmt.Println("  --no-color        Disable colorized output")
 	fmt.Println("  --env             Show only environment variables for the process")
+	fmt.Println("  --show-secrets    Show sensitive environment variables without redaction")
+	fmt.Println("  --verbose         Show extended process information (memory, I/O, file descriptors)")
 	fmt.Println("  --help            Show this help message")
 	fmt.Println("  --version         Show version and exit")
 }
@@ -110,6 +112,7 @@ func main() {
 	noColorFlag := flag.Bool("no-color", false, "disable colorized output")
 	envFlag := flag.Bool("env", false, "show only environment variables for the process")
 	showSecretsFlag := flag.Bool("show-secrets", false, "show sensitive environment variables without redaction")
+	verboseFlag := flag.Bool("verbose", false, "show extended process information")
 	helpFlag := flag.Bool("help", false, "show help")
 
 	flag.Parse()
@@ -301,7 +304,7 @@ func main() {
 	} else if *shortFlag {
 		output.RenderShort(res, !*noColorFlag)
 	} else {
-		output.RenderStandard(res, !*noColorFlag)
+		output.RenderStandard(res, !*noColorFlag, *verboseFlag)
 	}
 
 	_ = shortFlag
